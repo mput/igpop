@@ -24,6 +24,7 @@
   (let [base (-> (get-in ctx (into [:base :profiles] pth)) (dissoc :elements))]
     (if-let [els (:elements obj)]
       (let [els' (reduce (fn [acc [k v]]
+
                            (let [next-pth (into pth [:elements k])]
                              (if (get-in ctx (into [:base :profiles] next-pth))
                                (assoc acc k (enrich ctx next-pth v))
@@ -132,6 +133,81 @@
 (defn merge-in [m pth v]
   (update-in m pth (fn [x] (if x (merge x v) v))))
 
+
+;; (defn merge-elms [base-elms extending-elms]
+;;   (reduce (fn [acc [k v]]
+;;             (into acc {k (merge v (k extending-elms))}))
+;;           {}
+;;           base-elms))
+
+(defn complex-type? [type] (capitalized? (name type)))
+(defn get-ref-type [ref] (keyword (last (str/split ref #"/"))))
+
+#_(defn type->elements [ctx type]
+  (let [type-value (get-in ctx [:definitions :complex (keyword type)])]
+    (->> (filter
+          (fn [[key]] (not (or
+                            (str/starts-with? (name key) "_")
+                            (= key :Extension))))
+          (:properties type-value))
+         (map (fn [[subtype props]]
+                [subtype (into (dissoc props :items :$ref)
+                               (if-let [ref (get-in props [:items :$ref])]
+                                 {:collection true :ref ref}
+                                 (if-let [ref (get props :$ref)]
+                                   {:ref ref})
+                                 ))]))
+         (map (fn [[subtype props]]
+                [subtype (into (dissoc props :ref)
+                               (if-let [ref-path (:ref props)]
+                                 (let [ref-type (get-ref-type ref-path)]
+                                   (if (complex-type? ref-type)
+                                     {:elements (type->elements ctx ref-type)}
+                                     {:type ref-type})))
+                               )]))
+         (into {}))))
+
+(defn type->elements [ctx type]
+  (let [type-type (if (complex-type? type) :complex :primitive)
+        type-value (get-in ctx [:definitions type-type (keyword type)])]
+    (if (= type-type :complex)
+      (->> (filter
+            (fn [[key]] (not (or
+                              (str/starts-with? (name key) "_")
+                              (= key :extension))))
+            (:properties type-value))
+           (map (fn [[subtype props]]
+                  [subtype (into (dissoc props :items :$ref)
+                                 (let [items (:items props)
+                                       ref (:$ref (or items props))]
+                                   (merge {:collection (boolean items)}
+                                          (if-let [ref-type (and ref (get-ref-type ref))]
+                                            (if (not (= ref-type :Reference))
+                                              (type->elements ctx (get-ref-type ref))
+                                              {:type {:complex false :name :Reference}})
+                                            ))))]))
+           ((fn [elements]
+              {:type {:complex true :name type} :elements (into {} elements)}))
+           )
+      {:type {:complex false :name type}})))
+
+(defn embed-complex-types [ctx elms]
+  (reduce (fn [acc [name value]]
+            (assoc acc name
+                   (if-let [nested-elms (:elements value)]
+                     (assoc value :elements (embed-complex-types ctx nested-elms) )
+                     (if-let [type (:type value)]
+                       (merge value (type->elements ctx type))
+                       value))))
+          {}
+          elms))
+
+(defn full-enrich [ctx pth extending-profile]
+  (let [base-profile (-> (get-in ctx (into [:base :profiles] pth)))
+        merged-base (merge (dissoc base-profile :elements) (dissoc extending-profile :elements))
+        #_merged-elms #_(merge-elms (:elements base-profile) (:elements extending-profile))]
+    (into merged-base {:elements (embed-complex-types ctx (:elements base-profile))})))
+
 (defn build-profiles [ctx mode]
   (->> ctx
        :source
@@ -141,12 +217,14 @@
                     (assoc-in acc [rt id]
                               (cond
                                 (= mode "profiles") (enrich ctx [rt] profile)
+                                (= mode "full-profiles") (full-enrich ctx [rt] profile)
                                 (= mode "resources") (-> (get-in ctx (into [:base :profiles] [rt])))
                                 (= mode "diff-profiles") profile)
                                )) acc profiles)
           ) {})
        (assoc ctx (keyword mode))
        (get-inlined-valuesets)))
+
 
 (defn load-defs [ctx pth]
   (let [manifest (read-yaml (str pth "/ig.yaml"))
@@ -184,7 +262,9 @@
                                   (merge-in acc (:to insert) source))
                                 (do (println "TODO:" nm)
                                     acc))))) {}))]
-    (build-profiles (build-profiles (build-profiles (merge ctx user-data) "profiles") "resources") "diff-profiles")))
+    ((build-profiles (build-profiles (merge ctx user-data) "profiles") "resources") "diff-profiles")
+    #_(build-profiles (merge ctx user-data) "full-profiles"))
+  )
 
 (defn safe-file [& pth]
   (let [file (apply io/file pth)]

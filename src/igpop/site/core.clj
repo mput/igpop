@@ -12,6 +12,7 @@
    [ring.util.response]
    [route-map.core]
    [igpop.site.utils :as u]
+   [igpop.json-schema]
    [clojure.java.io :as io]))
 
 (defn welcome [ctx req]
@@ -32,9 +33,24 @@
       (-> (ring.util.response/resource-response path opts)
           (ring.middleware.head/head-response req)))))
 
+;; (defn source [ctx req]
+;;   {:status 200
+;;    :body (clj-yaml.core/generate-string (dissoc ctx :fhir))})
 (defn source [ctx req]
   {:status 200
-   :body (clj-yaml.core/generate-string (dissoc ctx :fhir))})
+   :body (clj-yaml.core/generate-string (get-in ctx [:full-profiles :Patient :basic]))})
+
+(defn schema [ctx {{rt :resource-type profile :profile} :route-params}]
+  {
+   :status 200
+   :body (igpop.json-schema/build-schema ctx rt profile)
+   })
+
+(defn match-extension [ext name-param]
+  (fn [k]
+    (if (str/ends-with? k (str "." ext))
+      {name-param (str/replace k #"\..*$" "")
+       :format ext})))
 
 (def routes
   {:GET #'welcome
@@ -45,6 +61,7 @@
                 [:valuset-id] {:GET #'igpop.site.valuesets/valueset}}
    "profiles" {:GET #'igpop.site.profiles/profiles-dashboard
                [:resource-type] {:GET #'igpop.site.profiles/profile
+                                 "schema" {[(match-extension "json" :profile)] {:GET #'schema}}
                                  [:profile] {:GET #'igpop.site.profiles/profile}}}})
 
 (defn *dispatch [ctx {uri :uri meth :request-method :as req}]
@@ -129,6 +146,7 @@
   (def hm (.getAbsolutePath (io/file  "example")))
 
   (def srv (start hm 8899))
+
 
   (build hm "http://localhost/igpop/example/build")
   (build hm "/igpop")
