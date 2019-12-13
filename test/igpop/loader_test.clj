@@ -1,8 +1,13 @@
 (ns igpop.loader-test
   (:require [igpop.loader :as sut]
+            [clj-yaml.core]
             [clojure.test :refer :all]
             [clojure.java.io :as io]
             [matcho.core :as matcho]))
+
+(defn read-yaml [pth]
+  (clj-yaml.core/parse-string
+   (slurp pth)))
 
 (deftest test-loader
   (testing "parse-name"
@@ -74,7 +79,7 @@
   )
 
 
-(deftest build-raw-profiles
+(deftest set-defaults
   (matcho/match
    (sut/set-defaults
     {:elements {:identifier {}
@@ -88,4 +93,30 @@
                :gender {:valueset {:id "fhir:administrative-gender"
                                    :strength "extensible"}
                         :mustsupport false}}})
+
   )
+
+(deftest merge-profile
+  (def base-profile
+    {
+     :description "Base description"
+     :kind "Resource"
+     :elements {:active {:type "boolean"}
+                :identifier {:collection true :type "Identifier"}}
+     })
+
+  (def ig-profile
+    {
+     :description "Extended description"
+     :elements {
+                :identifier {:minItems 1 :elements {:system {:required true}
+                                                    :value {:required true :description "Extended description"}}}}
+     })
+
+  (def project-path (.getPath (io/resource "test-project")))
+  (def definitions (read-yaml (io/file project-path "node_modules" "igpop-fhir-4.0.0" "fhir-types-definition.yaml")))
+
+  (matcho/match
+   (sut/full-enrich base-profile ig-profile definitions)
+   {:description "Extended description"})
+)

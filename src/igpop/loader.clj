@@ -34,6 +34,29 @@
         (assoc (merge base obj) :elements els'))
       (merge base obj))))
 
+
+(defn merge-elements [base-elms ig-elms difinitions]
+  (let [extension (:extension ig-elms)]
+    (reduce (fn [acc [key base-value]]
+              (assoc acc key
+                     (let [ig-value (get ig-elms key)
+                           merged-values (merge base-value ig-value)
+                           next-base-elms (:elements base-value)
+                           next-ig-elms (:elements ig-value)]
+                       (cond
+                         (and next-base-elms next-ig-elms) (assoc merged-values :elements (merge-elements next-base-elms next-ig-elms difinitions))
+                         next-ig-elms (assoc merged-values :elements (merge-elements {} next-ig-elms difinitions)) ;;add type here
+                         :else merged-values
+                         ))))
+            {}
+            base-elms))
+  )
+
+
+(defn full-enrich [base-profile ig-profile difinitions]
+  (merge base-profile ig-profile {:elements (merge-elements (:elements base-profile) (:elements ig-profile) difinitions)})
+  )
+
 (defn set-element-defaults [elm defaults]
   (reduce
    (fn [elm-acc [def-key def-value]]
@@ -65,9 +88,6 @@
 
 (defn set-defaults [profile defaults]
   (assoc profile :elements (set-elements-defaults (:elements profile) defaults)))
-
-(defn full-enrich [ctx pth ig-profile]
-  )
 
 (defn capitalized? [s]
   (when (string? s)
@@ -184,7 +204,7 @@
                                 (= mode "profiles") (enrich ctx [rt] profile)
                                 (= mode "resources") (-> (get-in ctx (into [:base :profiles] [rt])))
                                 (= mode "diff-profiles") (set-defaults profile igpop-defaults)
-                                (= mode "snapshots") (full-enrich ctx [rt] profile)
+                                (= mode "snapshots") (full-enrich (get-in ctx (into [:base :profiles] [rt])) profile (get ctx :definitions))
                                 )
                                )) acc profiles)
           ) {})
@@ -227,7 +247,7 @@
                                   (merge-in acc (:to insert) source))
                                 (do (println "TODO:" nm)
                                     acc))))) {}))]
-    (build-profiles (build-profiles (build-profiles (merge ctx user-data) "profiles") "resources") "diff-profiles")))
+    (build-profiles (build-profiles (build-profiles (build-profiles (merge ctx user-data) "profiles") "resources") "diff-profiles") "snapshots")))
 
 (defn safe-file [& pth]
   (let [file (apply io/file pth)]

@@ -36,9 +36,19 @@
   {:status 200
    :body (clj-yaml.core/generate-string (dissoc ctx :fhir))})
 
+(defn temp [ctx req]
+  {:status 200
+   :body (clj-yaml.core/generate-string (:basic (:Patient (:snapshots ctx ))))})
+
+(defn temp2 [ctx req]
+  {:status 200
+   :body (clj-yaml.core/generate-string (:basic (:Patient (:diff-profiles ctx ))))})
+
 (def routes
   {:GET #'welcome
    "ig.yaml" {:GET #'source}
+   "temp" {:GET #'temp}
+   "temp2" {:GET #'temp2}
    "docs" {:GET #'igpop.site.docs/dashboard
            [:doc-id] {:GET #'igpop.site.docs/doc-page}}
    "valuesets" {:GET #'igpop.site.valuesets/valuesets-dashboard
