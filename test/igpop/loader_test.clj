@@ -95,28 +95,3 @@
                         :mustsupport false}}})
 
   )
-
-(deftest merge-profile
-  (def base-profile
-    {
-     :description "Base description"
-     :kind "Resource"
-     :elements {:active {:type "boolean"}
-                :identifier {:collection true :type "Identifier"}}
-     })
-
-  (def ig-profile
-    {
-     :description "Extended description"
-     :elements {
-                :identifier {:minItems 1 :elements {:system {:required true}
-                                                    :value {:required true :description "Extended description"}}}}
-     })
-
-  (def project-path (.getPath (io/resource "test-project")))
-  (def definitions (read-yaml (io/file project-path "node_modules" "igpop-fhir-4.0.0" "fhir-types-definition.yaml")))
-
-  (matcho/match
-   (sut/full-enrich base-profile ig-profile definitions)
-   {:description "Extended description"})
-)

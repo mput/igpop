@@ -9,6 +9,10 @@
   (clj-yaml.core/parse-string
    (slurp pth)))
 
+(defn capitalized? [s]
+  (when (string? s)
+    (Character/isUpperCase (first s))))
+
 (defn get-inlined-valuesets [{profiles :profiles valuesets :valuesets :as ctx}]
   (assoc ctx :valuesets (merge valuesets (:valuesets (reduce (fn [acc [rt prls]]
                                                                       (reduce (fn [acc [id {elements :elements :as pr}]]
@@ -34,24 +38,54 @@
         (assoc (merge base obj) :elements els'))
       (merge base obj))))
 
+(defn complex-type? [type] (capitalized? (name type)))
+
+(defn get-ref-type [ref] (keyword (last (str/split ref #"/"))))
+
+(defn type->elements [type definitions]
+  (let [type-type (if (complex-type? type) :complex :primitive)
+        type-value (get-in definitions [type-type (keyword type)])]
+    (if (= type-type :complex)
+      (let [required (mapv keyword (:required type-value))]
+        (->> (filter
+              (fn [[key]] (not (or
+                                (str/starts-with? (name key) "_")
+                                (= key :extension))))
+              (:properties type-value))
+             (reduce
+              (fn [acc [name value]]
+                (assoc acc name
+                       (into (dissoc value :items :$ref)
+                             (let [collection? (contains? value :items)
+                                   required? (contains? required name)
+                                   ref (:$ref (or (:items value) value))
+                                   type (if ref (get-ref-type ref) "code")]
+                               (merge {:type type}
+                                      (if collection? {:collection true} {})
+                                      (if required?
+                                        (if collection?
+                                          {:minItems 1}
+                                          {:required true})
+                                        {})))))
+
+                )
+              {})))
+      {})))
 
 (defn merge-elements [base-elms ig-elms difinitions]
-  (let [extension (:extension ig-elms)]
-    (reduce (fn [acc [key base-value]]
-              (assoc acc key
-                     (let [ig-value (get ig-elms key)
-                           merged-values (merge base-value ig-value)
-                           next-base-elms (:elements base-value)
-                           next-ig-elms (:elements ig-value)]
-                       (cond
-                         (and next-base-elms next-ig-elms) (assoc merged-values :elements (merge-elements next-base-elms next-ig-elms difinitions))
-                         next-ig-elms (assoc merged-values :elements (merge-elements {} next-ig-elms difinitions)) ;;add type here
-                         :else merged-values
-                         ))))
-            {}
-            base-elms))
-  )
-
+  (reduce (fn [acc [key base-value]]
+            (assoc acc key
+                   (let [ig-value (get ig-elms key)
+                         merged-values (merge base-value ig-value)
+                         next-ig-elms (:elements ig-value)]
+                     (if next-ig-elms
+                       (let [next-base-elms (or (:elements base-value)
+                                                (type->elements (:type base-value) difinitions))]
+                         (assoc merged-values :elements
+                                (merge-elements next-base-elms next-ig-elms difinitions)))
+                       merged-values))))
+          ig-elms
+          base-elms))
 
 (defn full-enrich [base-profile ig-profile difinitions]
   (merge base-profile ig-profile {:elements (merge-elements (:elements base-profile) (:elements ig-profile) difinitions)})
@@ -88,10 +122,6 @@
 
 (defn set-defaults [profile defaults]
   (assoc profile :elements (set-elements-defaults (:elements profile) defaults)))
-
-(defn capitalized? [s]
-  (when (string? s)
-    (Character/isUpperCase (first s))))
 
 (defn parse-name
   ([dir file-name]
@@ -189,9 +219,9 @@
 
 
 (def igpop-defaults {:mustsupport true
-               :valueset {
-                          :strength "extensible"
-                          }})
+                     :valueset {
+                                :strength "extensible"
+                                }})
 
 (defn build-profiles [ctx mode]
   (->> ctx
@@ -204,8 +234,10 @@
                                 (= mode "profiles") (enrich ctx [rt] profile)
                                 (= mode "resources") (-> (get-in ctx (into [:base :profiles] [rt])))
                                 (= mode "diff-profiles") (set-defaults profile igpop-defaults)
-                                (= mode "snapshots") (full-enrich (get-in ctx (into [:base :profiles] [rt])) profile (get ctx :definitions))
-                                )
+                                (= mode "snapshots") (full-enrich
+                                                      (get-in ctx [:base :profiles rt])
+                                                      (get-in ctx [:diff-profiles rt id])
+                                                      (get ctx :definitions)))
                                )) acc profiles)
           ) {})
        (assoc ctx (keyword mode))
@@ -247,7 +279,11 @@
                                   (merge-in acc (:to insert) source))
                                 (do (println "TODO:" nm)
                                     acc))))) {}))]
-    (build-profiles (build-profiles (build-profiles (build-profiles (merge ctx user-data) "profiles") "resources") "diff-profiles") "snapshots")))
+    (-> (merge ctx user-data)
+        (build-profiles "profiles")
+        (build-profiles "resources")
+        (build-profiles "diff-profiles")
+        (build-profiles "snapshots"))))
 
 (defn safe-file [& pth]
   (let [file (apply io/file pth)]
