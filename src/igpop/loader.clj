@@ -34,6 +34,41 @@
         (assoc (merge base obj) :elements els'))
       (merge base obj))))
 
+(defn set-element-defaults [elm defaults]
+  (reduce
+   (fn [elm-acc [def-key def-value]]
+     (let [final-value? (not (map? def-value))
+           has-key? (contains? elm-acc def-key)]
+       (cond
+         (and final-value? has-key?) elm-acc
+         (and final-value? (not has-key?)) (assoc elm-acc def-key def-value)
+         (and (not final-value?) (not has-key?)) elm-acc
+         (and (not final-value?) has-key?) (assoc elm-acc def-key (set-element-defaults (get elm-acc def-key) def-value))
+         )
+       ))
+   elm defaults))
+
+
+(defn set-elements-defaults [elms elm-defaults]
+  (reduce
+   (fn [acc [elm-key elm-val]]
+     (if (= elm-key :extension)
+       (assoc acc :extension (set-elements-defaults elm-val elm-defaults))
+       (assoc acc elm-key
+              (let [setted-elm-val (set-element-defaults elm-val elm-defaults)]
+                (if-let [nested-elements (:elements elm-val)]
+                  (assoc setted-elm-val :elements (set-elements-defaults nested-elements elm-defaults))
+                  setted-elm-val)))
+       ))
+   {}
+   elms))
+
+(defn set-defaults [profile defaults]
+  (assoc profile :elements (set-elements-defaults (:elements profile) defaults)))
+
+(defn full-enrich [ctx pth ig-profile]
+  )
+
 (defn capitalized? [s]
   (when (string? s)
     (Character/isUpperCase (first s))))
@@ -132,6 +167,12 @@
 (defn merge-in [m pth v]
   (update-in m pth (fn [x] (if x (merge x v) v))))
 
+
+(def igpop-defaults {:mustsupport true
+               :valueset {
+                          :strength "extensible"
+                          }})
+
 (defn build-profiles [ctx mode]
   (->> ctx
        :source
@@ -142,7 +183,9 @@
                               (cond
                                 (= mode "profiles") (enrich ctx [rt] profile)
                                 (= mode "resources") (-> (get-in ctx (into [:base :profiles] [rt])))
-                                (= mode "diff-profiles") profile)
+                                (= mode "diff-profiles") (set-defaults profile igpop-defaults)
+                                (= mode "snapshots") (full-enrich ctx [rt] profile)
+                                )
                                )) acc profiles)
           ) {})
        (assoc ctx (keyword mode))

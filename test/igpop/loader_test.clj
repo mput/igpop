@@ -71,4 +71,21 @@
   (is (not (nil? (get-in project [:docs :pages :welcome]))))
   (is (not (nil? (get-in project [:docs :menu]))))
   (get-in project [:docs :pages])
-)
+  )
+
+
+(deftest build-raw-profiles
+  (matcho/match
+   (sut/set-defaults
+    {:elements {:identifier {}
+                :gender {:valueset {:id "fhir:administrative-gender"}
+                         :mustsupport false}}}
+    {:mustsupport true
+     :valueset {
+                :strength "extensible"
+                }})
+   {:elements {:identifier {:mustsupport true}
+               :gender {:valueset {:id "fhir:administrative-gender"
+                                   :strength "extensible"}
+                        :mustsupport false}}})
+  )
