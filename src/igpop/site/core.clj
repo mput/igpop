@@ -6,6 +6,7 @@
    [igpop.site.valuesets]
    [igpop.site.docs]
    [igpop.site.views :as views]
+   [igpop.sd :as sd]
    [org.httpkit.server]
    [ring.middleware.head]
    [ring.util.codec]
@@ -36,24 +37,29 @@
   {:status 200
    :body (clj-yaml.core/generate-string (dissoc ctx :fhir))})
 
+(defn handle-sd [ctx {{rt :resource-type nm :profile} :route-params}]
+  (let [profile (get-in ctx [:complete-profiles (keyword rt) (keyword nm)] )]
+    {:status 200
+     :body profile #_(sd/to-sd profile)}))
+
 (defn temp [ctx req]
   {:status 200
-   :body (clj-yaml.core/generate-string (:basic (:Patient (:snapshots ctx ))))})
+   :body (clj-yaml.core/generate-string (:Patient (:complete-profiles ctx )))})
 
-(defn temp2 [ctx req]
-  {:status 200
-   :body (clj-yaml.core/generate-string (:basic (:Patient (:diff-profiles ctx ))))})
+
+
 
 (def routes
   {:GET #'welcome
    "ig.yaml" {:GET #'source}
    "temp" {:GET #'temp}
-   "temp2" {:GET #'temp2}
    "docs" {:GET #'igpop.site.docs/dashboard
            [:doc-id] {:GET #'igpop.site.docs/doc-page}}
    "valuesets" {:GET #'igpop.site.valuesets/valuesets-dashboard
                 [:valuset-id] {:GET #'igpop.site.valuesets/valueset}}
    "profiles" {:GET #'igpop.site.profiles/profiles-dashboard
+               "sd" {[:resource-type] {:GET #'handle-sd
+                                           [:profile] {:GET #'handle-sd}}}
                [:resource-type] {:GET #'igpop.site.profiles/profile
                                  [:profile] {:GET #'igpop.site.profiles/profile}}}})
 

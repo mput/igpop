@@ -1,0 +1,4 @@
+elements:
+  mustsupport: true
+  valueset: 
+    strength: "extensible"

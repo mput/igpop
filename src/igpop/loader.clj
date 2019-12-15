@@ -1,6 +1,7 @@
 (ns igpop.loader
   (:require
    [clj-yaml.core]
+   [igpop.builder :as builder]
    [clojure.java.io :as io]
    [clojure.data.csv :as csv]
    [clojure.string :as str]))
@@ -37,91 +38,6 @@
                          els els)]
         (assoc (merge base obj) :elements els'))
       (merge base obj))))
-
-(defn complex-type? [type] (capitalized? (name type)))
-
-(defn get-ref-type [ref] (keyword (last (str/split ref #"/"))))
-
-(defn type->elements [type definitions]
-  (let [type-type (if (complex-type? type) :complex :primitive)
-        type-value (get-in definitions [type-type (keyword type)])]
-    (if (= type-type :complex)
-      (let [required (mapv keyword (:required type-value))]
-        (->> (filter
-              (fn [[key]] (not (or
-                                (str/starts-with? (name key) "_")
-                                (= key :extension))))
-              (:properties type-value))
-             (reduce
-              (fn [acc [name value]]
-                (assoc acc name
-                       (into (dissoc value :items :$ref)
-                             (let [collection? (contains? value :items)
-                                   required? (contains? required name)
-                                   ref (:$ref (or (:items value) value))
-                                   type (if ref (get-ref-type ref) "code")]
-                               (merge {:type type}
-                                      (if collection? {:collection true} {})
-                                      (if required?
-                                        (if collection?
-                                          {:minItems 1}
-                                          {:required true})
-                                        {})))))
-
-                )
-              {})))
-      {})))
-
-(defn merge-elements [base-elms ig-elms difinitions]
-  (reduce (fn [acc [key base-value]]
-            (assoc acc key
-                   (let [ig-value (get ig-elms key)
-                         merged-values (merge base-value ig-value)
-                         next-ig-elms (:elements ig-value)]
-                     (if next-ig-elms
-                       (let [next-base-elms (or (:elements base-value)
-                                                (type->elements (:type base-value) difinitions))]
-                         (assoc merged-values :elements
-                                (merge-elements next-base-elms next-ig-elms difinitions)))
-                       merged-values))))
-          ig-elms
-          base-elms))
-
-(defn full-enrich [base-profile ig-profile difinitions]
-  (merge base-profile ig-profile {:elements (merge-elements (:elements base-profile) (:elements ig-profile) difinitions)})
-  )
-
-(defn set-element-defaults [elm defaults]
-  (reduce
-   (fn [elm-acc [def-key def-value]]
-     (let [final-value? (not (map? def-value))
-           has-key? (contains? elm-acc def-key)]
-       (cond
-         (and final-value? has-key?) elm-acc
-         (and final-value? (not has-key?)) (assoc elm-acc def-key def-value)
-         (and (not final-value?) (not has-key?)) elm-acc
-         (and (not final-value?) has-key?) (assoc elm-acc def-key (set-element-defaults (get elm-acc def-key) def-value))
-         )
-       ))
-   elm defaults))
-
-
-(defn set-elements-defaults [elms elm-defaults]
-  (reduce
-   (fn [acc [elm-key elm-val]]
-     (if (= elm-key :extension)
-       (assoc acc :extension (set-elements-defaults elm-val elm-defaults))
-       (assoc acc elm-key
-              (let [setted-elm-val (set-element-defaults elm-val elm-defaults)]
-                (if-let [nested-elements (:elements elm-val)]
-                  (assoc setted-elm-val :elements (set-elements-defaults nested-elements elm-defaults))
-                  setted-elm-val)))
-       ))
-   {}
-   elms))
-
-(defn set-defaults [profile defaults]
-  (assoc profile :elements (set-elements-defaults (:elements profile) defaults)))
 
 (defn parse-name
   ([dir file-name]
@@ -218,10 +134,6 @@
   (update-in m pth (fn [x] (if x (merge x v) v))))
 
 
-(def igpop-defaults {:mustsupport true
-                     :valueset {
-                                :strength "extensible"
-                                }})
 
 (defn build-profiles [ctx mode]
   (->> ctx
@@ -232,13 +144,10 @@
                     (assoc-in acc [rt id]
                               (cond
                                 (= mode "profiles") (enrich ctx [rt] profile)
-                                (= mode "resources") (-> (get-in ctx (into [:base :profiles] [rt])))
-                                (= mode "diff-profiles") (set-defaults profile igpop-defaults)
-                                (= mode "snapshots") (full-enrich
-                                                      (get-in ctx [:base :profiles rt])
-                                                      (get-in ctx [:diff-profiles rt id])
-                                                      (get ctx :definitions)))
-                               )) acc profiles)
+                                (= mode "resources") (get-in ctx (into [:base :profiles] [rt]))
+                                (= mode "diff-profiles") profile
+                                (= mode "complete-profiles") (builder/build-profile ctx profile rt id))
+                              )) acc profiles)
           ) {})
        (assoc ctx (keyword mode))
        (get-inlined-valuesets)))
@@ -279,15 +188,17 @@
                                   (merge-in acc (:to insert) source))
                                 (do (println "TODO:" nm)
                                     acc))))) {}))]
-    (-> (merge ctx user-data)
+    (-> (merge ctx user-data {:manifest manifest})
         (build-profiles "profiles")
         (build-profiles "resources")
         (build-profiles "diff-profiles")
-        (build-profiles "snapshots"))))
+        (build-profiles "complete-profiles"))))
 
 (defn safe-file [& pth]
   (let [file (apply io/file pth)]
     (when (.exists file) file)))
+
+
 
 (defn load-fhir [home fhir-version]
   (if-let [fhir-dir (safe-file home "node_modules" (str "igpop-fhir-" fhir-version) "src")]
@@ -311,6 +222,10 @@
     (read-yaml fhir-types)
     (println "Could not find " (.getPath (io/file home "node_modules" (str "igpop-fhir-" fhir-version "fhir-types-definition.yaml"))))))
 
+(defn load-defaults [file-name]
+  (let [defaults (safe-file file-name)]
+    (read-yaml defaults)))
+
 (defn load-project [home]
   (let [manifest-file (io/file home "ig.yaml")]
     (when-not (.exists manifest-file)
@@ -319,7 +234,8 @@
     (let [manifest (read-yaml (.getPath manifest-file))
           fhir (when-let [fv (:fhir manifest)] (load-fhir home fv))
           definitions (when-let [fv (:fhir manifest)] (load-definitions home fv))
-          manifest' (assoc manifest :base fhir :home home :definitions definitions)]
+          defaults (load-defaults "src/igpop/defaults.yaml")
+          manifest' (assoc manifest :base fhir :home home :definitions definitions :defaults defaults)]
       (merge
        manifest'
        (load-defs manifest' home)))))
@@ -331,6 +247,4 @@
             (dissoc ctx :profiles :sources :valuesets)
             (read-yaml (io/file home "ig.yaml"))
             (load-defs ctx home)))))
-
-
 
