@@ -90,13 +90,13 @@
 
 (defn build-profile [ctx ig-profile rt rn]
   (let [defaults (:defaults ctx)
-        difinitions (:difinitions ctx)
+        definitions (:definitions ctx)
         {profile-id :id url :url fhirVersion :fhir} (:manifest ctx)
         id (get-id profile-id rt rn)
         base-profile (get-in ctx [:base :profiles rt])
         base (dissoc (merge base-profile ig-profile) :elements :examples)
         diff-elements (set-elements-defaults (:elements ig-profile) (:elements defaults))
-        snapshot-elements (merge-elements (:elements base-profile) diff-elements difinitions)
+        snapshot-elements (merge-elements (:elements base-profile) diff-elements definitions)
         ]
     (merge base
            {:id id
