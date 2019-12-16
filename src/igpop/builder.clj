@@ -66,9 +66,6 @@
    {}
    elms))
 
-(defn build-diff [profile defaults]
-  (assoc profile :elements (set-elements-defaults (:elements profile) defaults)))
-
 
 (defn merge-elements [base-elms ig-elms difinitions]
   (reduce (fn [acc [key base-value]]
@@ -85,17 +82,26 @@
           ig-elms
           base-elms))
 
-(defn build-snapshot [base-profile ig-profile difinitions]
-  (merge base-profile ig-profile {:elements (merge-elements (:elements base-profile) (:elements ig-profile) difinitions)}))
+(defn get-id [project-id rt rn]
+  (let [common (str project-id "-" (str/lower-case (name rt)))]
+    (if (= rn :basic)
+      common
+      (str common "-" (str/lower-case (name rn))))))
 
-(defn build-profile [ctx ig-profile rt id]
+(defn build-profile [ctx ig-profile rt rn]
   (let [defaults (:defaults ctx)
         difinitions (:difinitions ctx)
         {profile-id :id url :url fhirVersion :fhir} (:manifest ctx)
-        base-profile (get-in ctx [:base :profiles])
+        id (get-id profile-id rt rn)
+        base-profile (get-in ctx [:base :profiles rt])
+        base (dissoc (merge base-profile ig-profile) :elements :examples)
         diff-elements (set-elements-defaults (:elements ig-profile) (:elements defaults))
         snapshot-elements (merge-elements (:elements base-profile) diff-elements difinitions)
         ]
-    {:id profile-id
-     :differential diff-elements
-     :snapshot snapshot-elements}))
+    (merge base
+           {:id id
+            :type rt
+            :url url
+            :fhirVersion fhirVersion
+            :differential diff-elements
+            :snapshot snapshot-elements})))

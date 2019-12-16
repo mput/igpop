@@ -40,13 +40,11 @@
 (defn handle-sd [ctx {{rt :resource-type nm :profile} :route-params}]
   (let [profile (get-in ctx [:complete-profiles (keyword rt) (keyword nm)] )]
     {:status 200
-     :body profile #_(sd/to-sd profile)}))
+     :body (clj-yaml.core/generate-string (sd/to-sd profile))}))
 
 (defn temp [ctx req]
   {:status 200
    :body (clj-yaml.core/generate-string (:Patient (:complete-profiles ctx )))})
-
-
 
 
 (def routes

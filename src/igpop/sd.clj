@@ -14,12 +14,19 @@
               :else (or max-items "*"))]
     {:min min :max max}))
 
+(defn map-if-val-exits [& keyvals]
+  (->> (apply hash-map keyvals)
+       (filter (fn [[key val]] (not (nil? val))))
+       (into {})))
 
 (defn build-sd-elment [val paths]
   (let [path (str/join "." (map name paths))
         coordinality (get-cardinality-map val)]
     (merge
-     {:path path}
+     (map-if-val-exits
+      :path path
+      :definitions (:description val)
+      :mustSupport (:mustsupport val))
      coordinality
      )))
 
@@ -37,13 +44,14 @@
  )
 
 
-(defn to-sd [{type :type raw-snapshot :sprofile #_napshot raw-differential :differential :as profile}]
-  (let [snapshot (build-sd-elements (:elements raw-snapshot) [type])]
-    {:snapshot snapshot}))
-
-
-(to-sd {:type "Patient"
-        :snapshot {:elements
-                   {:birthdate {:required true}
-                    :animal {:disabled true}}}})
-
+(defn to-sd [{type :type
+              raw-snapshot :snapshot
+              raw-differential :differential
+              :as profile}]
+  (let [base (dissoc profile :snapshot :differential)
+        snapshot (build-sd-elements raw-snapshot [type])
+        differential (build-sd-elements raw-differential [type])
+        ]
+    (merge base
+           {:snapshot snapshot
+            :differential differential})))
