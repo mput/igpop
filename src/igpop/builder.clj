@@ -95,7 +95,7 @@
         id (get-id profile-id rt rn)
         base-profile (get-in ctx [:base :profiles rt])
         base (dissoc (merge base-profile ig-profile) :elements :examples)
-        diff-elements (set-elements-defaults (:elements ig-profile) (:elements defaults))
+        diff-elements (set-elements-defaults (:elemnts ig-profile) (:elements defaults))
         snapshot-elements (merge-elements (:elements base-profile) diff-elements definitions)
         ]
     (merge base
@@ -103,5 +103,5 @@
             :type rt
             :url url
             :fhirVersion fhirVersion
-            :differential diff-elements
-            :snapshot snapshot-elements})))
+            :differential {:elements diff-elements}
+            :snapshot {:elements snapshot-elements}})))

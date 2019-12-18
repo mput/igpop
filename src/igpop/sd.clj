@@ -1,56 +1,59 @@
 (ns igpop.sd
   (:require [clojure.string :as str]))
 
-
-(defn get-cardinality-map
- [{required :required disabled :disabled min-items :minItems max-items :maxItems}]
-  (let [min (cond
-              disabled 0
-              required 1
-              :else (or min-items 0))
-        max (cond
-              disabled 0
-              required 1
-              :else (or max-items "*"))]
-    {:min min :max max}))
-
 (defn map-if-val-exits [& keyvals]
   (->> (apply hash-map keyvals)
        (filter (fn [[key val]] (not (nil? val))))
        (into {})))
 
-(defn build-sd-elment [val paths]
-  (let [path (str/join "." (map name paths))
-        coordinality (get-cardinality-map val)]
-    (merge
-     (map-if-val-exits
-      :path path
-      :definitions (:description val)
-      :mustSupport (:mustsupport val))
-     coordinality
-     )))
+(defn element-to-sd [val paths]
+  (map-if-val-exits
+   :path (str/join "." (map name paths))
+   :min (let [{:keys [required disabled minItems]} val]
+          (cond
+            disabled 0
+            required 1
+            :else (or minItems 0)))
+   :max (let [{:keys [required disabled maxItems]} val]
+          (cond
+            disabled 0
+            required 1
+            :else (or maxItems "*")))
+   :definitions (:description val)
+   :mustSupport (:mustsupport val)
+   :fixedCode (let [{const :constant} val]
+                (when (string? const) const))
+   :fixedCoding (let [{const :constant} val]
+                  (when (map? const) const))
+   :constraints (when-let [{constraints :constraints} val]
+                  (map (fn [[key {:keys [expression description severity]}]]
+                         {:key (name key)
+                          :severity severity
+                          :human description
+                          :expression expression
+                          })
+                       constraints))
+   ))
 
-(defn build-sd-elements
+(defn elements-to-sd
  [elements parent-paths]
  (reduce
   (fn [acc [elm-name elm-val]]
     (let [paths (conj parent-paths elm-name)
-          child-elements (:elements elm-val)
-          child-sd-elements (if child-elements (build-sd-elements child-elements paths) [])]
-      (concat acc [(build-sd-elment elm-val paths)] child-sd-elements))
+          {child-elements :elements}  elm-val
+          child-sd-elements (if child-elements (elements-to-sd child-elements paths) [])]
+      (concat acc [(element-to-sd elm-val paths)] child-sd-elements))
     )
   []
-  elements)
- )
-
+  elements))
 
 (defn to-sd [{type :type
               raw-snapshot :snapshot
               raw-differential :differential
               :as profile}]
   (let [base (dissoc profile :snapshot :differential)
-        snapshot (build-sd-elements raw-snapshot [type])
-        differential (build-sd-elements raw-differential [type])
+        snapshot (elements-to-sd raw-snapshot [type])
+        differential (elements-to-sd raw-differential [type])
         ]
     (merge base
            {:snapshot snapshot

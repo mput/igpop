@@ -222,8 +222,8 @@
     (read-yaml fhir-types)
     (println "Could not find " (.getPath (io/file home "node_modules" (str "igpop-fhir-" fhir-version "fhir-types-definition.yaml"))))))
 
-(defn load-defaults [file-name]
-  (let [defaults (safe-file file-name)]
+(defn load-defaults []
+  (let [defaults (safe-file "src/igpop/defaults.yaml")]
     (read-yaml defaults)))
 
 (defn load-project [home]
@@ -234,11 +234,12 @@
     (let [manifest (read-yaml (.getPath manifest-file))
           fhir (when-let [fv (:fhir manifest)] (load-fhir home fv))
           definitions (when-let [fv (:fhir manifest)] (load-definitions home fv))
-          defaults (load-defaults "src/igpop/defaults.yaml")
+          defaults (load-defaults)
           manifest' (assoc manifest :base fhir :home home :definitions definitions :defaults defaults)]
       (merge
        manifest'
        (load-defs manifest' home)))))
+
 
 (defn reload [ctx]
   (swap! ctx
