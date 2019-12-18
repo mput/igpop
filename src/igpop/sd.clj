@@ -62,6 +62,3 @@
     (assoc profile
            :snapshot snapshot
            :differential differential)))
-
-#_(format-elements {:elements {:birthdate {:required true}
-                             :animal {:disabled true}}} :Patient)

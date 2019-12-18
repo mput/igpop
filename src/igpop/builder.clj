@@ -28,7 +28,7 @@
                                    ref (:$ref (or (:items value) value))
                                    type (if ref (get-ref-type ref) "code")]
                                (merge {:type type}
-                                      (if collection? {:collection true} {})
+                                      {:collection collection?}
                                       (if required?
                                         (if collection?
                                           {:minItems 1}
@@ -52,15 +52,15 @@
    elm defaults))
 
 
-(defn set-elements-defaults [elms elm-defaults]
+(defn set-elements-defaults [elms elms-defaults]
   (reduce
    (fn [acc [elm-key elm-val]]
      (if (= elm-key :extension)
-       (assoc acc :extension (set-elements-defaults elm-val elm-defaults))
+       (assoc acc :extension (set-elements-defaults elm-val elms-defaults))
        (assoc acc elm-key
-              (let [setted-elm-val (set-element-defaults elm-val elm-defaults)]
+              (let [setted-elm-val (set-element-defaults elm-val elms-defaults)]
                 (if-let [nested-elements (:elements elm-val)]
-                  (assoc setted-elm-val :elements (set-elements-defaults nested-elements elm-defaults))
+                  (assoc setted-elm-val :elements (set-elements-defaults nested-elements elms-defaults))
                   setted-elm-val)))
        ))
    {}
@@ -90,7 +90,9 @@
 (defn buil-snapshot [base diff definitions]
   (assoc (merge base diff)
          :elements
-         (merge-elements (:elements base) (:elements diff) definitions)))
+         (merge-elements (set-elements-defaults (:elements base) {:collection false})
+                         (:elements diff)
+                         definitions)))
 
 (defn get-id [project-id rt rn]
   (let [common (str project-id "-" (str/lower-case (name rt)))]
