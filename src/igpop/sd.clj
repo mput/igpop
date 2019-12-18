@@ -1,31 +1,35 @@
 (ns igpop.sd
   (:require [clojure.string :as str]))
 
-(defn map-if-val-exits [& keyvals]
+(defn map-if-not-nil [& keyvals]
   (->> (apply hash-map keyvals)
        (filter (fn [[key val]] (not (nil? val))))
        (into {})))
 
+
 (defn element-to-sd [val paths]
-  (map-if-val-exits
+  (map-if-not-nil
    :path (str/join "." (map name paths))
-   :min (let [{:keys [required disabled minItems]} val]
+   :min (let [{:keys [required minItems collection]} val
+              default (if (some? collection) 0)]
+          (cond
+            required 1
+            minItems minItems
+            :else default))
+   :max (let [{:keys [required disabled maxItems collection]} val
+              default (if (some? collection)
+                        (if collection "*" "1"))]
           (cond
             disabled 0
-            required 1
-            :else (or minItems 0)))
-   :max (let [{:keys [required disabled maxItems]} val]
-          (cond
-            disabled 0
-            required 1
-            :else (or maxItems "*")))
+            maxItems maxItems
+            :else default))
    :definitions (:description val)
    :mustSupport (:mustsupport val)
    :fixedCode (let [{const :constant} val]
                 (when (string? const) const))
    :fixedCoding (let [{const :constant} val]
                   (when (map? const) const))
-   :constraints (when-let [{constraints :constraints} val]
+   :constraints (when-let [constraints (:constraints val)]
                   (map (fn [[key {:keys [expression description severity]}]]
                          {:key (name key)
                           :severity severity
@@ -35,26 +39,29 @@
                        constraints))
    ))
 
-(defn elements-to-sd
- [elements parent-paths]
- (reduce
-  (fn [acc [elm-name elm-val]]
-    (let [paths (conj parent-paths elm-name)
-          {child-elements :elements}  elm-val
-          child-sd-elements (if child-elements (elements-to-sd child-elements paths) [])]
-      (concat acc [(element-to-sd elm-val paths)] child-sd-elements))
-    )
-  []
-  elements))
+(defn format-elements
+  [elements type-or-paths]
+  (if (keyword? type-or-paths)
+    (format-elements {type-or-paths elements} [])
+    (reduce
+     (fn [acc [elm-name elm-val]]
+       (let [paths (conj type-or-paths elm-name)
+             {child-elements :elements}  elm-val
+             child-sd-elements (if child-elements (format-elements child-elements paths) [])]
+         (concat acc [(element-to-sd elm-val paths)] child-sd-elements))
+       )
+     []
+     elements)))
 
 (defn to-sd [{type :type
               raw-snapshot :snapshot
               raw-differential :differential
               :as profile}]
-  (let [base (dissoc profile :snapshot :differential)
-        snapshot (elements-to-sd raw-snapshot [type])
-        differential (elements-to-sd raw-differential [type])
-        ]
-    (merge base
-           {:snapshot snapshot
-            :differential differential})))
+  (let [snapshot (format-elements raw-snapshot type)
+        differential (format-elements raw-differential type)]
+    (assoc profile
+           :snapshot snapshot
+           :differential differential)))
+
+#_(format-elements {:elements {:birthdate {:required true}
+                             :animal {:disabled true}}} :Patient)
