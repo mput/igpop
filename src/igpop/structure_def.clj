@@ -25,8 +25,28 @@
           (merge acc (ordered-map {(get-path prefix k) v}))))
         (ordered-map []) map))
 
+(defn cardinality [k v] (cond
+                             (= k :required) (if (= true v) {:min 1})
+                             (= k :disabled) (if (= true v) {:max 0})
+                             (= k :minItems) {:min v}
+                             (= k :maxItems) {:max v}))
+
+(def agenda {:required cardinality
+             :disabled cardinality
+             :minItems cardinality
+             :maxItems cardinality})
+
+(defn elements-to-sd
+  [els]
+  (map (fn [[el-key props]]
+         (reduce
+          (fn [acc [rule-key rule-func]]
+            (into acc (if (contains? props rule-key) (rule-func rule-key (get props rule-key)))))
+          (ordered-map {:id (name el-key) :path (name el-key)}) agenda))
+       els))
+
 (defn generate-differential [rt prn props] (-> {}
-                                               (assoc :element [(into (ordered-map []) (flatten-profile (:elements props) (name rt)))])))
+                                               (assoc :element (elements-to-sd (into (ordered-map []) (flatten-profile (:elements props) (name rt)))))))
 
 (defn generate-structure [{diffs :diff-profiles profiles :profiles :as ctx}]
   (let [m {:resourceType "Bundle"

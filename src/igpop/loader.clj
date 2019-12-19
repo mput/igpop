@@ -291,7 +291,7 @@
 
 
 (defn load-fhir [home fhir-version]
-  (if-let [fhir-dir (safe-file home "node_modules" (str "igpop-fhir-" fhir-version) "src")]
+  (if-let [fhir-dir (safe-file home (str "igpop-fhir-" fhir-version) "src")]
     (->> (file-seq fhir-dir)
          (reduce (fn [acc f]
                    (let [nm (.getName f)]
@@ -305,12 +305,12 @@
                        (let [rt (str/replace nm #"\.yaml$" "")]
                          (assoc-in acc [:profiles (keyword rt)] (read-yaml (.getPath f))))
                        ))) {}))
-    (println "Could not find " (.getPath (io/file home "node_modules" (str "igpop-fhir-" fhir-version))))))
+    (println "Could not find " (.getPath (io/file home (str "igpop-fhir-" fhir-version))))))
 
 (defn load-definitions [home fhir-version]
-  (if-let [fhir-types (safe-file home "node_modules" (str "igpop-fhir-" fhir-version) "fhir-types-definition.yaml")]
+  (if-let [fhir-types (safe-file home (str "igpop-fhir-" fhir-version) "fhir-types-definition.yaml")]
     (read-yaml fhir-types)
-    (println "Could not find " (.getPath (io/file home "node_modules" (str "igpop-fhir-" fhir-version "fhir-types-definition.yaml"))))))
+    (println "Could not find " (.getPath (io/file home (str "igpop-fhir-" fhir-version "fhir-types-definition.yaml"))))))
 
 (defn load-defaults []
   (let [defaults (safe-file "src/igpop/defaults.yaml")]
