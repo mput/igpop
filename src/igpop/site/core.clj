@@ -157,7 +157,7 @@
   (def proj (igpop.loader/load-project home))
   (def sd-exmpl (sd/to-sd proj :Patient :basic))
 
-  (clojure.pprint/pprint (get-in proj [:snapshots :Patient :basic :elements :identifier]))
+  (clojure.pprint/pprint (get-in proj [:snapshots :Patient :basic :elements]))
   (clojure.pprint/pprint (get-in sd-exmpl []))
 
   )

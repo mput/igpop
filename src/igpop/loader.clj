@@ -38,9 +38,7 @@
                                (merge {:type type}
                                       {:collection collection?}
                                       (if required?
-                                        (if collection?
-                                          {:minItems 1}
-                                          {:required true})
+                                        {:required true}
                                         {}))))))
               {})))
       {})))
@@ -80,7 +78,7 @@
          (set-elements-defaults (:elements profile) (:elements defaults))))
 
 
-(defn merge-elements [base-elms ig-elms difinitions]
+(defn merge-elements [base-elms ig-elms definitions]
   (reduce (fn [acc [key base-value]]
             (assoc acc key
                    (let [ig-value (get ig-elms key)
@@ -88,9 +86,9 @@
                          next-ig-elms (:elements ig-value)]
                      (if next-ig-elms
                        (let [next-base-elms (or (:elements base-value)
-                                                (type->elements (:type base-value) difinitions))]
+                                                (type->elements (:type base-value) definitions))]
                          (assoc merged-values :elements
-                                (merge-elements next-base-elms next-ig-elms difinitions)))
+                                (merge-elements next-base-elms next-ig-elms definitions)))
                        merged-values))))
           ig-elms
           base-elms))
@@ -236,7 +234,7 @@
                                 (= mode "diff-profiles") (build-diff profile (:defaults ctx))
                                 (= mode "snapshots") (build-snapshot (get-in ctx [:base :profiles rt])
                                                                      (get-in  ctx [:diff-profiles rt id])
-                                                                     [:definitions ctx]))))
+                                                                     (:definitions ctx)))))
                   acc profiles)
           ) {})
        (assoc ctx (keyword mode))
