@@ -38,9 +38,9 @@
    :body (clj-yaml.core/generate-string (dissoc ctx :fhir))})
 
 (defn handle-sd [ctx {{rt :resource-type nm :profile} :route-params}]
-  (let [profile (get-in ctx [:complete-profiles (keyword rt) (keyword nm)] )]
+  (let [sd (sd/to-sd ctx (keyword rt) (keyword nm))]
     {:status 200
-     :body (clj-yaml.core/generate-string (sd/to-sd profile))}))
+     :body (clj-yaml.core/generate-string sd)}))
 
 (defn temp [ctx req]
   {:status 200
@@ -149,4 +149,15 @@
 
   (srv)
 
-  (handler {:uri "/" :request-method :get}))
+  (handler {:uri "/" :request-method :get})
+
+
+  ;; try SD getn.
+  (def home (io/file  "example"))
+  (def proj (igpop.loader/load-project home))
+  (def sd-exmpl (sd/to-sd proj :Patient :basic))
+
+  (clojure.pprint/pprint (get-in proj [:snapshots :Patient :basic :elements :identifier]))
+  (clojure.pprint/pprint (get-in sd-exmpl []))
+
+  )

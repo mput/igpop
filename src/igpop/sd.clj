@@ -3,7 +3,7 @@
 
 (defn map-if-not-nil [& keyvals]
   (->> (apply hash-map keyvals)
-       (filter (fn [[key val]] (not (nil? val))))
+       (filter (comp some? val))
        (into {})))
 
 
@@ -53,12 +53,22 @@
      []
      elements)))
 
-(defn to-sd [{type :type
-              raw-snapshot :snapshot
-              raw-differential :differential
-              :as profile}]
-  (let [snapshot (format-elements raw-snapshot type)
-        differential (format-elements raw-differential type)]
-    (assoc profile
-           :snapshot snapshot
-           :differential differential)))
+(defn get-id [project-id rt rn]
+  (let [common (str project-id "-" (str/lower-case (name rt)))]
+    (if (= rn :basic)
+      common
+      (str common "-" (str/lower-case (name rn))))))
+
+(defn to-sd [ctx rt rn]
+  (let [definitions (:definitions ctx)
+        {profile-id :id url :url fhirVersion :fhir} (:manifest ctx)]
+    (map-if-not-nil
+     :id (get-id profile-id rn rn)
+     :type (name rt)
+     :url url
+     :fhirVersion fhirVersion
+     :snapshot (if-let [snap (get-in ctx [:snapshots rt rn])]
+                 (format-elements snap rt))
+     :differential (if-let [diff (get-in ctx [:diff-profiles rt rn])]
+                     (format-elements diff rt))
+     )))
