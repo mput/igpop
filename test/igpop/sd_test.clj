@@ -1,7 +1,6 @@
 (ns igpop.sd-test
   (:require [igpop.sd :as sut]
-            [igpop.loader :refer [load-defaults]]
-            [igpop.builder :refer [build-diff]]
+            [igpop.loader :refer [build-diff]]
             [clojure.test :refer :all]
             [matcho.core :as matcho]))
 

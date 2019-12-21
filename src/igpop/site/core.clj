@@ -13,6 +13,7 @@
    [ring.util.response]
    [route-map.core]
    [igpop.site.utils :as u]
+   [cheshire.core :refer :all]
    [clojure.java.io :as io]))
 
 (defn welcome [ctx req]
@@ -37,15 +38,27 @@
   {:status 200
    :body (clj-yaml.core/generate-string (dissoc ctx :fhir))})
 
-(defn handle-sd [ctx {{rt :resource-type nm :profile} :route-params}]
-  (let [sd (sd/to-sd ctx (keyword rt) (keyword nm))]
-    {:status 200
-     :body (clj-yaml.core/generate-string sd)}))
 
 (defn temp [ctx req]
   {:status 200
    :body (clj-yaml.core/generate-string (:Patient (:complete-profiles ctx )))})
 
+(defn handle-sd [ctx {{rt :resource-type nm :profile} :route-params}]
+  (let [sd (sd/to-sd ctx (keyword rt) (keyword nm))]
+    {:status 200
+     :body (generate-string sd {:pretty true})}))
+
+(defn profile-dispatch
+  [ctx {{profile-with-format :profile-with-format} :route-params :as req}]
+  (let [formats (partition 2 [".schema.json" nil
+                              ".json" handle-sd
+                              "" #'igpop.site.profiles/profile])]
+    (some (fn [[end-var handler]]
+            (if (str/ends-with? profile-with-format end-var)
+              (handler ctx (assoc-in req
+                                     [:route-params :profile]
+                                     (str/replace profile-with-format (re-pattern end-var) "")))))
+          formats)))
 
 (def routes
   {:GET #'welcome
@@ -56,10 +69,12 @@
    "valuesets" {:GET #'igpop.site.valuesets/valuesets-dashboard
                 [:valuset-id] {:GET #'igpop.site.valuesets/valueset}}
    "profiles" {:GET #'igpop.site.profiles/profiles-dashboard
-               "sd" {[:resource-type] {:GET #'handle-sd
-                                           [:profile] {:GET #'handle-sd}}}
                [:resource-type] {:GET #'igpop.site.profiles/profile
-                                 [:profile] {:GET #'igpop.site.profiles/profile}}}})
+                                 [:profile-with-format] {:GET profile-dispatch}}}})
+
+(dissoc (route-map.core/match [:get "/profiles/Patient/basic"] routes) :parents)
+;; => {:match #'igpop.site.profiles/profile, :w 32, :params {:resource-type "Patient", :handler #'igpop.site.profiles/profile, :profile "basic"}}
+
 
 (defn *dispatch [ctx {uri :uri meth :request-method :as req}]
   (let [uri (str/replace uri #"\.html$" "")
@@ -89,6 +104,9 @@
   (let [href (apply u/href {} pth)
         {body :body} (*dispatch ctx {:request-method :get :uri href})
         [pth opts] (if (map? (last pth)) [(butlast pth) (last pth)] [pth {}])
+        pth (if-let [root (:root opts)]
+              (into [root] pth)
+              pth)
         output (apply io/file (into [home "build"]
                                     (if idx
                                       (into pth ["index.html"])
@@ -114,14 +132,18 @@
     (.mkdir (io/file home "build"))
     (.mkdir (io/file home "build" "static"))
     (.mkdir (io/file home "build" "profiles"))
+    (.mkdir (io/file home "build" "fhir"))
+    (.mkdir (io/file home "build" "fhir" "profiles"))
 
     (dump-page ctx home [] :index)
     (dump-page ctx home ["profiles"] :index)
+
     (doseq [[rt prs] (:profiles ctx)]
       (doseq [[id pr] (if-not (some #(= % :basic) (keys prs))
                         (assoc prs :basic {})
                         prs)]
-        (dump-page ctx home ["profiles" (name rt) (name id) {:format "html"}])))
+        (dump-page ctx home ["profiles" (name rt) (name id) {:format "html"}])
+        (dump-page ctx home ["profiles" (name rt) (name id) {:format "json" :root "fhir"}])))
 
     (.mkdir (io/file home "build" "valuesets"))
     (dump-page ctx home ["valuesets"] :index)
