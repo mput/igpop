@@ -9,6 +9,10 @@ DATE = $(shell date)
 repl:
 	clojure -A:test:nrepl -R:test:nrepl -e "(-main)" -r
 
+figrepl:
+	clojure -A:fig -b dev -r
+
+
 clear:
 	rm -rf target && clojure -A:build
 

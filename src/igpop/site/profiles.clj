@@ -295,6 +295,15 @@
                              (mapv (fn [[nm pr]] (profile-link ctx rt nm pr)))))))))})
 
 
+(defn serve-edit-component [ctx {{rt :resource-type nm :profile} :route-params :as req}]
+  (let [profile (get-in ctx [:profiles (keyword rt) (keyword nm)])
+        resource (get-in ctx [:resources (keyword rt) (keyword nm)])]
+    {:status 200
+     :body (views/layout ctx
+            style-tag
+            (views/menu (profiles-to-menu ctx) req)
+            [:div#edit-profile-root]
+            [:script {:src (str "/static/cljs-out/dev-main.js")}])}))
 
 
 

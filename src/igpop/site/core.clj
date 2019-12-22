@@ -5,6 +5,7 @@
    [igpop.site.profiles]
    [igpop.site.valuesets]
    [igpop.site.docs]
+   [igpop.site.edit-pofile]
    [igpop.site.views :as views]
    [igpop.sd :as sd]
    [org.httpkit.server]
@@ -26,13 +27,17 @@
 (defn handle-static [{meth :request-method uri :uri :as req}]
   (when (and (#{:get :head} meth)
            (or (str/starts-with? (or uri "") "/static/")
+               (str/starts-with? (or uri "") "/cljs-out/")
                (str/starts-with? (or uri "") "/favicon.ico")))
     (let [opts {:root "public"
                 :index-files? true
                 :allow-symlinks? true}
-          path (subs (ring.util.codec/url-decode (:uri req)) 8)]
+          path (if (str/starts-with? (or uri "") "/cljs-out/") ; FIXME: temp hack to serve cljs bases.
+                 uri
+                 (subs (ring.util.codec/url-decode (:uri req)) 8))]
       (-> (ring.util.response/resource-response path opts)
           (ring.middleware.head/head-response req)))))
+
 
 (defn source [ctx req]
   {:status 200
@@ -70,7 +75,8 @@
                 [:valuset-id] {:GET #'igpop.site.valuesets/valueset}}
    "profiles" {:GET #'igpop.site.profiles/profiles-dashboard
                [:resource-type] {:GET #'igpop.site.profiles/profile
-                                 [:profile-with-format] {:GET profile-dispatch}}}})
+                                 [:profile-with-format] {:GET profile-dispatch
+                                                         "edit" {:GET #'igpop.site.profiles/serve-edit-component}}}}})
 
 (dissoc (route-map.core/match [:get "/profiles/Patient/basic"] routes) :parents)
 ;; => {:match #'igpop.site.profiles/profile, :w 32, :params {:resource-type "Patient", :handler #'igpop.site.profiles/profile, :profile "basic"}}

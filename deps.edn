@@ -1,4 +1,4 @@
-{:paths ["src" "resources"]
+{:paths ["src" "resources" "target"]
  :deps  {org.clojure/clojure            {:mvn/version "1.10.1"}
          clj-commons/clj-yaml           {:mvn/version "0.7.0"}
          cheshire                       {:mvn/version "5.8.1"}
@@ -17,7 +17,10 @@
          org.clojure/data.csv {:mvn/version "0.1.4"}
          ;; support for java 11+
          org.clojure/core.rrb-vector {:mvn/version "0.0.14"}
-         markdown-clj {:mvn/version "1.10.0"}}
+         markdown-clj {:mvn/version "1.10.0"}
+         org.clojure/clojurescript {:mvn/version "1.10.339"}
+         com.bhauman/figwheel-main {:mvn/version "0.2.3"}
+         com.bhauman/rebel-readline-cljs {:mvn/version "0.1.4"}}
 
  :aliases
  {:nrepl      {:extra-paths ["env/dev" "test"]
@@ -39,4 +42,5 @@
           :jvm-opts    ^:replace ["-XX:-OmitStackTraceInFastThrow"]
           :extra-deps  {cambada {:git/url "https://github.com/HealthSamurai/cambada"
                                  :sha     "e44a0bebd039285f3e10f15f5703d6eaf92672c7"}}
-          :main-opts   ["-m" "build"]}}}
+          :main-opts   ["-m" "build"]}
+  :fig {:main-opts ["-m" "figwheel.main"]}}}
